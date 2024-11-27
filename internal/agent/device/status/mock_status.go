@@ -15,6 +15,7 @@ import (
 
 	v1alpha1 "github.com/flightctl/flightctl/api/v1alpha1"
 	client "github.com/flightctl/flightctl/internal/agent/client"
+	agent "github.com/flightctl/flightctl/internal/cloudevents/agent"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -177,6 +178,18 @@ func (m *MockManager) SetProperties(arg0 *v1alpha1.RenderedDeviceSpec) {
 func (mr *MockManagerMockRecorder) SetProperties(arg0 any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetProperties", reflect.TypeOf((*MockManager)(nil).SetProperties), arg0)
+}
+
+// SetStatusPubClient mocks base method.
+func (m *MockManager) SetStatusPubClient(arg0 agent.CloudEventAgentClient) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetStatusPubClient", arg0)
+}
+
+// SetStatusPubClient indicates an expected call of SetStatusPubClient.
+func (mr *MockManagerMockRecorder) SetStatusPubClient(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetStatusPubClient", reflect.TypeOf((*MockManager)(nil).SetStatusPubClient), arg0)
 }
 
 // Sync mocks base method.

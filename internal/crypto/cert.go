@@ -164,7 +164,7 @@ func (ca *CA) EnsureServerCertificate(certFile, keyFile string, hostnames []stri
 }
 
 func GetServerCert(certFile, keyFile string, hostnames []string) (*TLSCertificateConfig, error) {
-	internalServer, err := oscrypto.GetServerCert(certFile, keyFile, sets.NewString(hostnames...))
+	internalServer, err := oscrypto.GetServerCert(certFile, keyFile, sets.New(hostnames...))
 	if err != nil {
 		return nil, err
 	}

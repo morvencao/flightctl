@@ -6,6 +6,9 @@ import (
 
 	"github.com/flightctl/flightctl/api/v1alpha1"
 	"github.com/flightctl/flightctl/internal/agent/client"
+	"github.com/flightctl/flightctl/internal/cloudevents/agent"
+	"github.com/flightctl/flightctl/internal/cloudevents/resource"
+	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic"
 )
 
 type Type string
@@ -50,8 +53,10 @@ type Manager interface {
 	Rollback() error
 	// SetClient sets the management API client.
 	SetClient(client.Management)
+	SetSpecSubClient(agent.CloudEventAgentClient)
 	// GetDesired returns the desired rendered device spec from the management API.
 	GetDesired(ctx context.Context) (*v1alpha1.RenderedDeviceSpec, bool, error)
+	SubscribeSpec(ctx context.Context, handlers ...generic.ResourceHandler[*resource.Device])
 }
 
 type PriorityQueue interface {

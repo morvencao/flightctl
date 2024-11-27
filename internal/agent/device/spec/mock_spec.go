@@ -15,7 +15,10 @@ import (
 
 	v1alpha1 "github.com/flightctl/flightctl/api/v1alpha1"
 	client "github.com/flightctl/flightctl/internal/agent/client"
+	agent "github.com/flightctl/flightctl/internal/cloudevents/agent"
+	resource "github.com/flightctl/flightctl/internal/cloudevents/resource"
 	gomock "go.uber.org/mock/gomock"
+	generic "open-cluster-management.io/sdk-go/pkg/cloudevents/generic"
 )
 
 // MockManager is a mock of Manager interface.
@@ -200,6 +203,18 @@ func (mr *MockManagerMockRecorder) SetClient(arg0 any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetClient", reflect.TypeOf((*MockManager)(nil).SetClient), arg0)
 }
 
+// SetSpecSubClient mocks base method.
+func (m *MockManager) SetSpecSubClient(arg0 agent.CloudEventAgentClient) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetSpecSubClient", arg0)
+}
+
+// SetSpecSubClient indicates an expected call of SetSpecSubClient.
+func (mr *MockManagerMockRecorder) SetSpecSubClient(arg0 any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetSpecSubClient", reflect.TypeOf((*MockManager)(nil).SetSpecSubClient), arg0)
+}
+
 // SetUpgradeFailed mocks base method.
 func (m *MockManager) SetUpgradeFailed() {
 	m.ctrl.T.Helper()
@@ -210,6 +225,23 @@ func (m *MockManager) SetUpgradeFailed() {
 func (mr *MockManagerMockRecorder) SetUpgradeFailed() *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUpgradeFailed", reflect.TypeOf((*MockManager)(nil).SetUpgradeFailed))
+}
+
+// SubscribeSpec mocks base method.
+func (m *MockManager) SubscribeSpec(ctx context.Context, handlers ...generic.ResourceHandler[*resource.Device]) {
+	m.ctrl.T.Helper()
+	varargs := []any{ctx}
+	for _, a := range handlers {
+		varargs = append(varargs, a)
+	}
+	m.ctrl.Call(m, "SubscribeSpec", varargs...)
+}
+
+// SubscribeSpec indicates an expected call of SubscribeSpec.
+func (mr *MockManagerMockRecorder) SubscribeSpec(ctx any, handlers ...any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	varargs := append([]any{ctx}, handlers...)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SubscribeSpec", reflect.TypeOf((*MockManager)(nil).SubscribeSpec), varargs...)
 }
 
 // Upgrade mocks base method.

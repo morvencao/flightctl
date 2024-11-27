@@ -46,6 +46,7 @@ type svcConfig struct {
 	SrvKeyFile           string   `json:"srvKeyFile,omitempty"`
 	AltNames             []string `json:"altNames,omitempty"`
 	LogLevel             string   `json:"logLevel,omitempty"`
+	MaestroAddress       string   `json:"maestroAddress,omitempty"`
 }
 
 type queueConfig struct {

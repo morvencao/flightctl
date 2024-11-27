@@ -11,6 +11,8 @@ import (
 	config_latest "github.com/coreos/ignition/v2/config/v3_4"
 	config_latest_types "github.com/coreos/ignition/v2/config/v3_4/types"
 	api "github.com/flightctl/flightctl/api/v1alpha1"
+	"github.com/flightctl/flightctl/internal/cloudevents/resource"
+	"github.com/flightctl/flightctl/internal/cloudevents/source"
 	"github.com/flightctl/flightctl/internal/store"
 	"github.com/flightctl/flightctl/internal/util"
 	"github.com/flightctl/flightctl/pkg/ignition"
@@ -18,10 +20,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/samber/lo"
 	"github.com/sirupsen/logrus"
+	"k8s.io/apimachinery/pkg/types"
 )
 
-func deviceRender(ctx context.Context, resourceRef *ResourceReference, store store.Store, callbackManager CallbackManager, k8sClient k8sclient.K8SClient, log logrus.FieldLogger) error {
-	logic := NewDeviceRenderLogic(callbackManager, log, store, k8sClient, *resourceRef)
+func deviceRender(ctx context.Context, resourceRef *ResourceReference, store store.Store, callbackManager CallbackManager, k8sClient k8sclient.K8SClient, cloudEventClient source.CloudEventSourceClient, log logrus.FieldLogger) error {
+	logic := NewDeviceRenderLogic(callbackManager, log, store, k8sClient, cloudEventClient, *resourceRef)
 	if resourceRef.Op == DeviceRenderOpUpdate {
 		err := logic.RenderDevice(ctx)
 		if err != nil {
@@ -36,15 +39,16 @@ func deviceRender(ctx context.Context, resourceRef *ResourceReference, store sto
 }
 
 type DeviceRenderLogic struct {
-	callbackManager CallbackManager
-	log             logrus.FieldLogger
-	store           store.Store
-	k8sClient       k8sclient.K8SClient
-	resourceRef     ResourceReference
+	callbackManager  CallbackManager
+	log              logrus.FieldLogger
+	store            store.Store
+	k8sClient        k8sclient.K8SClient
+	cloudEventClient source.CloudEventSourceClient
+	resourceRef      ResourceReference
 }
 
-func NewDeviceRenderLogic(callbackManager CallbackManager, log logrus.FieldLogger, store store.Store, k8sClient k8sclient.K8SClient, resourceRef ResourceReference) DeviceRenderLogic {
-	return DeviceRenderLogic{callbackManager: callbackManager, log: log, store: store, k8sClient: k8sClient, resourceRef: resourceRef}
+func NewDeviceRenderLogic(callbackManager CallbackManager, log logrus.FieldLogger, store store.Store, k8sClient k8sclient.K8SClient, cloudEventClient source.CloudEventSourceClient, resourceRef ResourceReference) DeviceRenderLogic {
+	return DeviceRenderLogic{callbackManager: callbackManager, log: log, store: store, k8sClient: k8sClient, cloudEventClient: cloudEventClient, resourceRef: resourceRef}
 }
 
 func (t *DeviceRenderLogic) RenderDevice(ctx context.Context) error {
@@ -84,7 +88,25 @@ func (t *DeviceRenderLogic) RenderDevice(ctx context.Context) error {
 	}
 
 	err = t.store.Device().UpdateRendered(ctx, t.resourceRef.OrgID, t.resourceRef.Name, string(renderedConfig), string(renderedApplications))
-	return t.setStatus(ctx, err)
+
+	if err := t.setStatus(ctx, err); err != nil {
+		return err
+	}
+
+	renderedSpec, err := t.store.Device().GetRendered(ctx, t.resourceRef.OrgID, t.resourceRef.Name, nil, "")
+	if err != nil {
+		return fmt.Errorf("failed getting rendered device spec for device %s/%s: %w", t.resourceRef.OrgID, t.resourceRef.Name, err)
+	}
+	if err := t.cloudEventClient.PublishDeviceSpec(ctx, &resource.Device{
+		UID:     types.UID(t.resourceRef.Name),
+		Version: renderedSpec.RenderedVersion,
+		Spec:    *renderedSpec,
+	}); err != nil {
+		return fmt.Errorf("failed publishing device spec via cloudevents: %w", err)
+	}
+
+	t.log.Infof("Published device rendered spec %s/%s with version %s via cloudevents", t.resourceRef.OrgID, t.resourceRef.Name, renderedSpec.RenderedVersion)
+	return nil
 }
 
 func (t *DeviceRenderLogic) setStatus(ctx context.Context, renderErr error) error {

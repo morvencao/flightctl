@@ -10,8 +10,11 @@ import (
 	"github.com/flightctl/flightctl/internal/agent/device/applications"
 	"github.com/flightctl/flightctl/internal/agent/device/hook"
 	"github.com/flightctl/flightctl/internal/agent/device/resource"
+	"github.com/flightctl/flightctl/internal/cloudevents/agent"
+	ceresource "github.com/flightctl/flightctl/internal/cloudevents/resource"
 	"github.com/flightctl/flightctl/pkg/executer"
 	"github.com/flightctl/flightctl/pkg/log"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 var _ Manager = (*StatusManager)(nil)
@@ -44,6 +47,7 @@ func NewManager(
 type StatusManager struct {
 	deviceName       string
 	managementClient client.Management
+	statusPubClient  agent.CloudEventAgentClient
 	exporters        []Exporter
 	log              *log.PrefixLogger
 	device           *v1alpha1.Device
@@ -75,10 +79,15 @@ type Manager interface {
 	SetClient(client.Management)
 	// SetProperties sets the properties for the exporters.
 	SetProperties(*v1alpha1.RenderedDeviceSpec)
+	SetStatusPubClient(agent.CloudEventAgentClient)
 }
 
 func (m *StatusManager) SetClient(managementClient client.Management) {
 	m.managementClient = managementClient
+}
+
+func (m *StatusManager) SetStatusPubClient(statusPubClient agent.CloudEventAgentClient) {
+	m.statusPubClient = statusPubClient
 }
 
 func (m *StatusManager) Get(ctx context.Context) *v1alpha1.DeviceStatus {
@@ -115,9 +124,20 @@ func (m *StatusManager) Sync(ctx context.Context) error {
 		m.log.Warn("management client not set")
 		return nil
 	}
-	if err := m.managementClient.UpdateDeviceStatus(ctx, m.deviceName, *m.device); err != nil {
-		return fmt.Errorf("failed to update device status: %w", err)
+	// if err := m.managementClient.UpdateDeviceStatus(ctx, m.deviceName, *m.device); err != nil {
+	// 	return fmt.Errorf("failed to update device status: %w", err)
+	// }
+
+	version := "0"
+	if m.device.Status != nil && m.device.Status.Config.RenderedVersion != "" {
+		version = m.device.Status.Config.RenderedVersion
 	}
+
+	if err := m.statusPubClient.PublishDeviceStatus(ctx, &ceresource.Device{UID: types.UID(*m.device.Metadata.Name), Version: version, Status: *m.device.Status}); err != nil {
+		return fmt.Errorf("failed to publish device status via cloudevents: %w", err)
+	}
+	m.log.Infof("Published device status for device %s via cloudevents", *m.device.Metadata.Name)
+
 	return nil
 }
 

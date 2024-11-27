@@ -16,11 +16,13 @@ import (
 	"github.com/flightctl/flightctl/internal/agent/device/resource"
 	"github.com/flightctl/flightctl/internal/agent/device/spec"
 	"github.com/flightctl/flightctl/internal/agent/device/status"
+	ceresource "github.com/flightctl/flightctl/internal/cloudevents/resource"
 	"github.com/flightctl/flightctl/internal/container"
 	"github.com/flightctl/flightctl/internal/util"
 	"github.com/flightctl/flightctl/pkg/log"
 	"github.com/lthibault/jitterbug"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic/types"
 )
 
 // Agent is responsible for managing the applications, configuration and status of the device.
@@ -92,8 +94,15 @@ func NewAgent(
 func (a *Agent) Run(ctx context.Context) error {
 	ctx, a.cancelFn = context.WithCancel(ctx)
 
-	specTicker := jitterbug.New(time.Duration(a.fetchSpecInterval), &jitterbug.Norm{Stdev: 30 * time.Millisecond, Mean: 0})
-	defer specTicker.Stop()
+	a.specManager.SubscribeSpec(ctx, func(action types.ResourceAction, device *ceresource.Device) error {
+		a.log.Infof("Received rendered device spec for device %s with version %s", device.UID, device.Version)
+		a.syncSpecFn(ctx, &device.Spec)
+		return nil
+	})
+
+	// specTicker := jitterbug.New(time.Duration(a.fetchSpecInterval), &jitterbug.Norm{Stdev: 30 * time.Millisecond, Mean: 0})
+	// defer specTicker.Stop()
+
 	statusTicker := jitterbug.New(time.Duration(a.fetchStatusInterval), &jitterbug.Norm{Stdev: 30 * time.Millisecond, Mean: 0})
 	defer statusTicker.Stop()
 
@@ -101,8 +110,8 @@ func (a *Agent) Run(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case <-specTicker.C:
-			a.syncSpec(ctx, a.syncSpecFn)
+		// case <-specTicker.C:
+		// 	a.syncSpec(ctx, a.syncSpecFn)
 		case <-statusTicker.C:
 			a.pushStatus(ctx)
 		}
@@ -116,6 +125,7 @@ func (a *Agent) Stop(ctx context.Context) error {
 }
 
 func (a *Agent) sync(ctx context.Context, current, desired *v1alpha1.RenderedDeviceSpec) error {
+	a.log.Infof("Syncing device from version %s to %s", current.RenderedVersion, desired.RenderedVersion)
 	if err := a.beforeUpdate(ctx, current, desired); err != nil {
 		return fmt.Errorf("before update: %w", err)
 	}
@@ -175,6 +185,7 @@ func (a *Agent) syncSpecFn(ctx context.Context, desired *v1alpha1.RenderedDevice
 	}
 
 	if spec.IsUpgrading(current, desired) {
+		a.log.Infof("Upgrading device to renderedVersion: %s", desired.RenderedVersion)
 		updateErr := a.statusManager.UpdateCondition(ctx, v1alpha1.Condition{
 			Type:    v1alpha1.DeviceUpdating,
 			Status:  v1alpha1.ConditionStatusTrue,
@@ -243,14 +254,14 @@ func (a *Agent) pushStatus(ctx context.Context) {
 	}()
 
 	if err := a.statusManager.Sync(ctx); err != nil {
-		msg := err.Error()
-		_, updateErr := a.statusManager.Update(ctx, status.SetDeviceSummary(v1alpha1.DeviceSummaryStatus{
-			Status: v1alpha1.DeviceSummaryStatusDegraded,
-			Info:   &msg,
-		}))
-		if updateErr != nil {
-			a.log.Errorf("Updating device status: %v", updateErr)
-		}
+		// msg := err.Error()
+		// _, updateErr := a.statusManager.Update(ctx, status.SetDeviceSummary(v1alpha1.DeviceSummaryStatus{
+		// 	Status: v1alpha1.DeviceSummaryStatusDegraded,
+		// 	Info:   &msg,
+		// }))
+		// if updateErr != nil {
+		// 	a.log.Errorf("Updating device status: %v", updateErr)
+		// }
 		a.log.Errorf("Syncing status: %v", err)
 	}
 }
@@ -288,7 +299,7 @@ func (a *Agent) beforeUpdateApplications(ctx context.Context, _, desired *v1alph
 		// tag such as latest in which case it will be pulled later. but we
 		// don't want to require calling out the network on every sync.
 		if !a.podmanClient.ImageExists(ctx, imageProvider.Image) {
-			err := wait.ExponentialBackoffWithContext(ctx, a.backoff, func() (bool, error) {
+			err := wait.ExponentialBackoffWithContext(ctx, a.backoff, func(ctx context.Context) (bool, error) {
 				resp, err := a.podmanClient.Pull(ctx, providerImage)
 				if err != nil {
 					a.log.Warnf("Failed to pull image %q: %v", providerImage, err)

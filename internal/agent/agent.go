@@ -159,6 +159,7 @@ func (a *Agent) Run(ctx context.Context) error {
 		hookManager,
 		enrollmentClient,
 		a.config.EnrollmentService.EnrollmentUIEndpoint,
+		a.config.MaestroEndpoint,
 		&a.config.ManagementService.Config,
 		backoff,
 		a.log,

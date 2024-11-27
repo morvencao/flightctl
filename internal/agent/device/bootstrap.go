@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 
 	"github.com/flightctl/flightctl/api/v1alpha1"
 	"github.com/flightctl/flightctl/internal/agent/client"
@@ -15,6 +16,7 @@ import (
 	"github.com/flightctl/flightctl/internal/agent/device/hook"
 	"github.com/flightctl/flightctl/internal/agent/device/spec"
 	"github.com/flightctl/flightctl/internal/agent/device/status"
+	"github.com/flightctl/flightctl/internal/cloudevents/agent"
 	"github.com/flightctl/flightctl/internal/util"
 	"github.com/flightctl/flightctl/pkg/executer"
 	"github.com/flightctl/flightctl/pkg/log"
@@ -42,6 +44,9 @@ type Bootstrap struct {
 	managementServiceConfig *client.Config
 	managementClient        client.Management
 
+	maestroEndpoint       string
+	cloudEventAgentClient agent.CloudEventAgentClient
+
 	enrollmentCSR []byte
 	log           *log.PrefixLogger
 
@@ -58,6 +63,7 @@ func NewBootstrap(
 	hookManager hook.Manager,
 	enrollmentClient client.Enrollment,
 	enrollmentUIEndpoint string,
+	maestroEndpoint string,
 	managementServiceConfig *client.Config,
 	backoff wait.Backoff,
 	log *log.PrefixLogger,
@@ -73,6 +79,7 @@ func NewBootstrap(
 		hookManager:             hookManager,
 		enrollmentClient:        enrollmentClient,
 		enrollmentUIEndpoint:    enrollmentUIEndpoint,
+		maestroEndpoint:         maestroEndpoint,
 		managementServiceConfig: managementServiceConfig,
 		backoff:                 backoff,
 		log:                     log,
@@ -262,7 +269,7 @@ func (b *Bootstrap) ensureEnrollment(ctx context.Context) error {
 		}
 
 		b.log.Info("Waiting for enrollment to be approved")
-		err := wait.ExponentialBackoffWithContext(ctx, b.backoff, func() (bool, error) {
+		err := wait.ExponentialBackoffWithContext(ctx, b.backoff, func(ctx context.Context) (bool, error) {
 			return b.verifyEnrollment(ctx)
 		})
 		if err != nil {
@@ -402,7 +409,7 @@ func (b *Bootstrap) enrollmentRequest(ctx context.Context) error {
 		},
 	}
 
-	err = wait.ExponentialBackoffWithContext(ctx, b.backoff, func() (bool, error) {
+	err = wait.ExponentialBackoffWithContext(ctx, b.backoff, func(ctx context.Context) (bool, error) {
 		_, err := b.enrollmentClient.CreateEnrollmentRequest(ctx, req)
 		if err != nil {
 			b.log.Warnf("failed to create enrollment request: %v", err)
@@ -435,9 +442,20 @@ func (b *Bootstrap) setManagementClient() error {
 	}
 	b.managementClient = client.NewManagement(managementHTTPClient)
 
+	maestroEndpoint := strings.TrimPrefix(b.maestroEndpoint, "grpcs://")
+	maestroEndpoint = strings.TrimPrefix(maestroEndpoint, "grpc://")
+	// create the device pubsub client
+	b.cloudEventAgentClient, err = agent.NewCloudEventAgentClient(context.Background(), b.deviceName, maestroEndpoint)
+	if err != nil {
+		return fmt.Errorf("create device pubsub client: %w", err)
+	}
+
 	// initialize the management client for spec and status managers
 	b.statusManager.SetClient(b.managementClient)
+	b.statusManager.SetStatusPubClient(b.cloudEventAgentClient)
 	b.specManager.SetClient(b.managementClient)
+	b.specManager.SetSpecSubClient(b.cloudEventAgentClient)
+
 	b.log.Info("Management client set")
 	return nil
 }

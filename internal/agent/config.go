@@ -63,6 +63,9 @@ type Config struct {
 	// switch to use that one.
 	GrpcManagementEndpoint string `json:"grpc-management-endpoint,omitempty"`
 
+	// MaestroEndpoint is the address of the device spec subscribing and status publishing endpoint
+	MaestroEndpoint string `json:"maestro-endpoint,omitempty"`
+
 	// SpecFetchInterval is the interval between two reads of the remote device spec
 	SpecFetchInterval util.Duration `json:"spec-fetch-interval,omitempty"`
 	// StatusUpdateInterval is the interval between two status updates

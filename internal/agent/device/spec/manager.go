@@ -13,10 +13,13 @@ import (
 	"github.com/flightctl/flightctl/internal/agent/client"
 	"github.com/flightctl/flightctl/internal/agent/device/errors"
 	"github.com/flightctl/flightctl/internal/agent/device/fileio"
+	"github.com/flightctl/flightctl/internal/cloudevents/agent"
+	"github.com/flightctl/flightctl/internal/cloudevents/resource"
 	"github.com/flightctl/flightctl/internal/container"
 	"github.com/flightctl/flightctl/pkg/log"
 	"golang.org/x/net/context"
 	"k8s.io/apimachinery/pkg/util/wait"
+	"open-cluster-management.io/sdk-go/pkg/cloudevents/generic"
 )
 
 var _ Manager = (*manager)(nil)
@@ -30,6 +33,7 @@ type manager struct {
 
 	deviceReadWriter fileio.ReadWriter
 	managementClient client.Management
+	specSubClient    agent.CloudEventAgentClient
 	bootcClient      container.BootcClient
 
 	// cached rendered versions
@@ -335,6 +339,14 @@ func (s *manager) getSpecFromQueue() (*v1alpha1.RenderedDeviceSpec, bool,
 
 func (s *manager) SetClient(client client.Management) {
 	s.managementClient = client
+}
+
+func (s *manager) SetSpecSubClient(client agent.CloudEventAgentClient) {
+	s.specSubClient = client
+}
+
+func (s *manager) SubscribeSpec(ctx context.Context, handlers ...generic.ResourceHandler[*resource.Device]) {
+	s.specSubClient.SubscribeDeviceSpec(ctx, handlers...)
 }
 
 func (s *manager) IsOSUpdate() (bool, error) {
